@@ -1,0 +1,214 @@
+const API_URL = 'https://raw.githubusercontent.com/GeekBrainsTutorial/online-store-api/master/responses';
+var stat = {
+  action: "",
+  product_name: "",
+  time: 0
+}
+const postResponse = (url, data) => {
+  return new Promise((resolve) => {
+    let xhr;
+    if (window.XMLHttpRequest) {
+      xhr = new XMLHttpRequest();
+    } else if (window.ActiveXObject) {
+      xhr = new ActiveXObject("Microsoft.XMLHTTP");
+    }
+
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState === 4) {
+        console.log(xhr.response);
+        resolve(xhr.responseText);
+      }
+    }
+
+    xhr.open('POST', url, true);
+    xhr.setRequestHeader('Content-Type', 'application/json; charset=UTF-8');
+    xhr.send(JSON.stringify(data));
+  });
+}
+
+Vue.component('basket', {
+  props: ['basketGoods', 'visibility'],
+  template: `
+    <div class="basket_block" v-if="visibility">
+      <div v-if="basketGoods.length>0">
+        <div class="basket_items" v-for="(item, index) in basketGoods">
+          <div class="b_item">
+              <h3>{{item.product_name}}</h3>
+              <p>{{item.price}}</p>
+              <button class="delete_button" @click="deleteFromBasket(index)">Удалить</button>
+          </div>
+        </div>
+      </div>
+    <div v-else>Корзина пуста</div>
+
+  `,
+  methods: {
+    deleteFromBasket(index) {
+      this.$emit("del", index);
+    }
+  }
+
+
+})
+
+Vue.component('search', {
+  props: ['goods'],
+  template: `
+    <div class="search_block">
+      <input type="text" class="search_Line" v-model="searchLine">
+      <button class="search_button" @click="filterGoods(searchLine)">Поиск</button>
+    </div>
+  `,
+  data() {
+    return { foundGoods: {} };
+
+  },
+  methods: {
+    filterGoods(sline) {
+
+      this.foundGoods = this.goods.filter((elem) => elem.product_name.toLowerCase().indexOf(sline.toLowerCase()) > -1);
+      this.$emit("showFiltered", this.foundGoods);
+    }
+  }
+});
+
+Vue.component('vue-header', {
+  props: ['goods', 'basketGoods'],
+  template: `
+    <header class="header_block">
+      <div class="header_wrapper">
+        <search :goods="goods" @showFiltered="showFiltered"></search>
+        <button class="basket_button" type="button" id="basket_button" @click="changeVisibility">Корзина</button> 
+        </div>
+   </header> 
+`,
+  data() {
+    return { goods: [] };
+  },
+  methods: {
+    changeVisibility() {
+      this.$emit("vBasket", this.goods);
+    },
+    showFiltered(fGoods) {
+      this.$emit("showFiltered", fGoods);
+
+    }
+  }
+});
+
+Vue.component('vue-goods-item', {
+  props: ['good'],
+  template: `
+    <div class="goods-item">
+       <h3 class="card_title">{{good.product_name}}</h3>
+       <p class="card_price">{{good.price}}</p>
+       <button class="buy-button" @click="addToBasket">Купить</button>
+    </div>
+  `,
+  methods: {
+    addToBasket() {
+      this.$emit("add", this.good);
+    }
+  }
+});
+
+Vue.component('vue-goods-list', {
+  props: ['goods'],
+  template: `
+    <div class="goods-list" id="goods_list">
+      <vue-goods-item v-for="good in goods" :good="good" @add="addToBasket"></vue-goods-item>
+    </div>
+  `,
+  methods: {
+    addToBasket(good) {
+      this.$emit("add", good);
+    }
+  }
+});
+
+Vue.component('vue-main', {
+  props: ['goods'],
+  template: `<vue-goods-list :goods="goods" @add="addToBasket"></vue-goods-list>`,
+  data() {
+    return {
+      goods: []
+    }
+  },
+  methods: {
+    addToBasket(good) {
+      this.$emit("add", good);
+    }
+  }
+})
+
+const e_shop = new Vue({
+  el: "#page",
+  template: `
+  <div>
+    <vue-header :goods="goods" :basketGoods="basketGoods" @vBasket="viewBasket" @showFiltered="showFiltered" ></vue-header>
+    <vue-main :goods="foundGoods" @add="addToBasket"></vue-main>
+    <basket :basketGoods="basketGoods" :visibility="isVisibleCard" @del="deleteFromBasket"></basket>
+  </div>
+  `,
+  data: {
+    isVisibleCard: false,
+    goods: [],
+    searchLine: '',
+    foundGoods: [],
+    basketGoods: []
+  },
+  methods: {
+    viewBasket() {
+      this.isVisibleCard = !this.isVisibleCard;
+    },
+    showFiltered(fG) {
+      this.foundGoods = fG;
+
+    },
+    addToBasket(item) {
+      this.basketGoods.push(item);
+      postResponse('/addToCart', item);
+      stat.action = "Add";
+      stat.product_name = item.product_name;
+      var now = new Date();
+      stat.time = now;
+      postResponse('/addAction', stat);
+    },
+
+
+    deleteFromBasket(index) {
+      stat.action = "Delete";
+      stat.product_name = this.basketGoods[index].product_name;
+      var now = new Date();
+      stat.time = now;
+      postResponse('/addAction', stat);
+
+      this.basketGoods.splice(index, 1);
+      postResponse('/deleteFromCart', this.basketGoods);
+
+    },
+
+    basketSum() {
+      var sum = 0;
+      for (var i = 0; i < this.basketGoods.length; i++) sum += this.basketGoods.price;
+
+      return sum;
+    },
+
+    numberOfGoods() {
+      return this.basketGoods.length;
+    }
+
+  },
+  mounted: async function fetchGoods() {
+    return await fetch(`/catalog`)
+      .then(resp => resp.json())
+      .then(data => {
+        this.goods = data;
+        this.foundGoods = data;
+      });
+  },
+
+
+});
+
